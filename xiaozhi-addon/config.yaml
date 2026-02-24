@@ -1,6 +1,6 @@
 name: "Xiaozhi ESP32 Server"
 description: "AI voice assistant server for Xiaozhi ESP32 devices with Claude LLM and Home Assistant integration"
-version: "1.0.2"
+version: "1.0.3"
 slug: "xiaozhi-server"
 url: "https://github.com/Yanndd1/xiaozhi-esp32-server"
 arch:
@@ -8,7 +8,7 @@ arch:
   - amd64
 startup: application
 boot: auto
-init: false
+init: true
 host_network: true
 hassio_api: true
 homeassistant_api: true
