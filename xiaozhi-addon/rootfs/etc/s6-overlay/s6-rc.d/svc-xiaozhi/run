@@ -99,9 +99,10 @@ TTS:
 ASR:
   SherpaASR:
     type: sherpa_onnx_local
-    model_dir: models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17
+    model_dir: models/sherpa-onnx-whisper-small
     output_dir: tmp/
-    model_type: sense_voice
+    model_type: whisper
+    language: ${LANGUAGE}
 
 VAD:
   SileroVAD:

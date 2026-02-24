@@ -35,10 +35,20 @@ RUN curl -L -o /tmp/repo.tar.gz \
 # 1. Make modelscope import optional (models pre-downloaded)
 # 2. Add HTTP request logging middleware (diagnostics)
 # 3. Add OTA routes without trailing slash (ESP32 device compatibility)
+# 4. Add Whisper ASR support for French/multilingual
 COPY patch_server.py /tmp/patch_server.py
 RUN python3 /tmp/patch_server.py && rm /tmp/patch_server.py
 
-# ── ASR model (SenseVoice multilingual, ~80 MB) ─────────────────────
+# ── ASR model: Whisper small (multilingual incl. French, ~370 MB) ────
+RUN mkdir -p models/sherpa-onnx-whisper-small \
+    && curl -L -o models/sherpa-onnx-whisper-small/small-encoder.int8.onnx \
+    "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-small/resolve/main/small-encoder.int8.onnx" \
+    && curl -L -o models/sherpa-onnx-whisper-small/small-decoder.int8.onnx \
+    "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-small/resolve/main/small-decoder.int8.onnx" \
+    && curl -L -o models/sherpa-onnx-whisper-small/small-tokens.txt \
+    "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-small/resolve/main/small-tokens.txt"
+
+# ── ASR model: SenseVoice (zh/en/ja/ko/yue fallback, ~80 MB) ────────
 RUN mkdir -p models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17 \
     && curl -L -o models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/model.int8.onnx \
     "https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/main/model.int8.onnx" \

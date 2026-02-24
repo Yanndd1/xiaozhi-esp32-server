@@ -14,8 +14,48 @@ t = t.replace(
     'try:\n    from modelscope.hub.file_download import model_file_download\n'
     'except ImportError:\n    model_file_download = None'
 )
+
+# ── Patch 3: Add Whisper ASR support ─────────────────────────────────
+# sherpa_onnx_local.py only supports SenseVoice and Paraformer.
+# We add Whisper support (from_whisper) for French and other languages.
+
+# 3a. Store whisper_language from config for later use
+t = t.replace(
+    '        # 初始化模型文件路径\n'
+    '        model_files = {',
+    '        # 初始化模型文件路径\n'
+    '        self.whisper_language = config.get("language", "fr")\n'
+    '        model_files = {'
+)
+
+# 3b. Skip modelscope download for Whisper (files have different names, pre-downloaded)
+t = t.replace(
+    '                    logger.bind(tag=TAG).info(f"正在下载模型文件: {file_name}")\n'
+    '                    model_file_download(',
+    '                    if self.model_type == "whisper":\n'
+    '                        continue  # Whisper: different file structure, pre-downloaded\n'
+    '                    logger.bind(tag=TAG).info(f"正在下载模型文件: {file_name}")\n'
+    '                    model_file_download('
+)
+
+# 3c. Add Whisper model initialization case (before paraformer)
+t = t.replace(
+    '            if self.model_type == "paraformer":',
+    '            if self.model_type == "whisper":\n'
+    '                logger.bind(tag=TAG).info(f"Loading Whisper model for language: {self.whisper_language}")\n'
+    '                self.model = sherpa_onnx.OfflineRecognizer.from_whisper(\n'
+    '                    encoder=os.path.join(self.model_dir, "small-encoder.int8.onnx"),\n'
+    '                    decoder=os.path.join(self.model_dir, "small-decoder.int8.onnx"),\n'
+    '                    tokens=os.path.join(self.model_dir, "small-tokens.txt"),\n'
+    '                    language=self.whisper_language,\n'
+    '                    task="transcribe",\n'
+    '                    num_threads=2,\n'
+    '                )\n'
+    '            elif self.model_type == "paraformer":'
+)
+
 p.write_text(t)
-print('[patch] modelscope import made optional in sherpa_onnx_local.py')
+print('[patch] sherpa_onnx_local.py: modelscope optional + Whisper ASR support added')
 
 # ── Patch 2: HTTP server - request logging + routes without trailing slash ──
 # ESP32 devices may send requests to /xiaozhi/ota (without trailing slash).
@@ -47,4 +87,4 @@ t = t.replace(
 )
 
 p.write_text(t)
-print('[patch] http_server.py: added request logging middleware + routes without trailing slash')
+print('[patch] http_server.py: request logging + routes without trailing slash')
