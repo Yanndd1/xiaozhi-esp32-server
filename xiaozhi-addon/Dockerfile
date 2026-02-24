@@ -1,7 +1,7 @@
-ARG BUILD_FROM=python:3.11-slim-bookworm
-FROM ${BUILD_FROM}
+# Hardcode base image - HAOS ignores build.yaml and uses Alpine by default
+FROM python:3.11-slim-bookworm
 
-# Install system dependencies
+# Install system dependencies (Debian/apt-get)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libopus-dev \
     libopus0 \
