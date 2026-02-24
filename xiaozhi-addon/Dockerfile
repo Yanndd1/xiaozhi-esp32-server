@@ -44,4 +44,5 @@ RUN mkdir -p models/snakers4_silero-vad/src/silero_vad/data && \
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
+ENTRYPOINT []
 CMD ["/entrypoint.sh"]
