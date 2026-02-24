@@ -33,9 +33,6 @@ PyYAML>=6.0
 ruamel.yaml==0.18.16
 loguru==0.7.3
 
-# Serialization
-ormsgpack==1.12.0
-
 # Auth
 PyJWT==2.10.1
 
