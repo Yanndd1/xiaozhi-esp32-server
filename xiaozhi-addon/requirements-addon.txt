@@ -9,11 +9,12 @@ websockets==14.2
 opuslib_next==1.1.5
 pydub==0.25.1
 
-# ASR (SherpaASR via sherpa_onnx - no torch needed)
-sherpa_onnx==1.12.17
+# ASR + VAD native packages (onnxruntime, sherpa_onnx) are installed
+# separately in the Dockerfile via manylinux wheel extraction + gcompat.
+# Do NOT add them here - they don't have Alpine/musl wheels.
 
-# VAD (SileroVAD uses onnxruntime directly - no torch needed)
-onnxruntime>=1.17.0
+# VAD (SileroVAD - pure Python wrapper, depends on onnxruntime)
+silero_vad
 
 # LLM
 anthropic>=0.49.0
