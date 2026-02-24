@@ -68,6 +68,11 @@ server:
   timezone_offset: +1
   auth:
     enabled: false
+    allowed_devices: []
+  auth_key: "haos-addon-secret-key-$(date +%s)"
+  mqtt_gateway: null
+  mqtt_signature_key: null
+  udp_gateway: null
 
 selected_module:
   VAD: SileroVAD
