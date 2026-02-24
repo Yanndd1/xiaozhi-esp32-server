@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libopus0 \
     ffmpeg \
     curl \
+    jq \
     gcc \
     g++ \
     && rm -rf /var/lib/apt/lists/*
@@ -39,5 +40,8 @@ RUN mkdir -p models/snakers4_silero-vad/src/silero_vad/data && \
     curl -L -o models/snakers4_silero-vad/src/silero_vad/data/silero_vad.onnx \
     "https://github.com/snakers4/silero-vad/raw/master/src/silero_vad/data/silero_vad.onnx"
 
-# Copy rootfs (S6 service scripts)
-COPY rootfs /
+# Copy entrypoint script
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+CMD ["/entrypoint.sh"]

@@ -1,21 +1,25 @@
-#!/usr/bin/with-contenv bashio
+#!/bin/bash
 # ==============================================================================
-# Xiaozhi ESP32 Server - Service run script
-# Reads HAOS add-on options and generates the server config, then starts the app
+# Xiaozhi ESP32 Server - HAOS Add-on Entrypoint
+# Reads add-on options from /data/options.json, generates server config, starts app
 # ==============================================================================
+set -e
 
-declare -r SERVER_DIR="/opt/xiaozhi-esp32-server"
-declare -r CONFIG_FILE="${SERVER_DIR}/data/.config.yaml"
+SERVER_DIR="/opt/xiaozhi-esp32-server"
+CONFIG_FILE="${SERVER_DIR}/data/.config.yaml"
+OPTIONS_FILE="/data/options.json"
 
-# Read add-on options
-ANTHROPIC_API_KEY=$(bashio::config 'anthropic_api_key')
-MODEL_NAME=$(bashio::config 'model_name')
-LANGUAGE=$(bashio::config 'language')
-TTS_VOICE=$(bashio::config 'tts_voice')
-PROMPT=$(bashio::config 'prompt')
+echo "[INFO] Reading add-on configuration..."
 
-# Get HA Supervisor token (automatically provided by HAOS)
-HA_TOKEN="${SUPERVISOR_TOKEN}"
+# Read options from HAOS options.json using jq
+ANTHROPIC_API_KEY=$(jq -r '.anthropic_api_key // ""' "${OPTIONS_FILE}")
+MODEL_NAME=$(jq -r '.model_name // "claude-sonnet-4-6"' "${OPTIONS_FILE}")
+LANGUAGE=$(jq -r '.language // "fr"' "${OPTIONS_FILE}")
+TTS_VOICE=$(jq -r '.tts_voice // ""' "${OPTIONS_FILE}")
+PROMPT=$(jq -r '.prompt // "Tu es un assistant IA intelligent. Sois concis."' "${OPTIONS_FILE}")
+
+# Get HA Supervisor token (injected by HAOS Supervisor as env var)
+HA_TOKEN="${SUPERVISOR_TOKEN:-}"
 
 # Determine TTS voice based on language if not explicitly set
 if [ -z "${TTS_VOICE}" ]; then
@@ -27,10 +31,12 @@ if [ -z "${TTS_VOICE}" ]; then
     esac
 fi
 
-# Build HA devices YAML list from options (safe iteration with bashio array syntax)
+# Build HA devices YAML list from options (safe jq array iteration)
 HA_DEVICES=""
-if bashio::config.has_value 'ha_devices'; then
-    for device in $(bashio::config 'ha_devices | .[]'); do
+DEVICE_COUNT=$(jq '.ha_devices | length' "${OPTIONS_FILE}")
+if [ "${DEVICE_COUNT}" -gt 0 ] 2>/dev/null; then
+    for i in $(seq 0 $((DEVICE_COUNT - 1))); do
+        device=$(jq -r ".ha_devices[$i]" "${OPTIONS_FILE}")
         HA_DEVICES="${HA_DEVICES}
       - \"${device}\""
     done
@@ -43,7 +49,7 @@ if [ -z "${HA_DEVICES}" ]; then
 fi
 
 # Get local IP for WebSocket/OTA URLs
-LOCAL_IP=$(hostname -I | awk '{print $1}')
+LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 if [ -z "${LOCAL_IP}" ]; then
     LOCAL_IP="0.0.0.0"
 fi
@@ -51,11 +57,13 @@ fi
 # Indent multi-line prompt (ensure each line has 2-space YAML indentation)
 PROMPT_INDENTED=$(echo "${PROMPT}" | sed 's/^/  /')
 
-bashio::log.info "Generating server configuration..."
-bashio::log.info "  LLM Model: ${MODEL_NAME}"
-bashio::log.info "  Language: ${LANGUAGE}"
-bashio::log.info "  TTS Voice: ${TTS_VOICE}"
-bashio::log.info "  Local IP: ${LOCAL_IP}"
+echo "[INFO] Configuration:"
+echo "[INFO]   LLM Model: ${MODEL_NAME}"
+echo "[INFO]   Language: ${LANGUAGE}"
+echo "[INFO]   TTS Voice: ${TTS_VOICE}"
+echo "[INFO]   Local IP: ${LOCAL_IP}"
+echo "[INFO]   HA Token: ${HA_TOKEN:+set}${HA_TOKEN:-not set}"
+echo "[INFO]   HA Devices: ${DEVICE_COUNT:-0}"
 
 # Ensure data directory exists
 mkdir -p "${SERVER_DIR}/data"
@@ -131,8 +139,8 @@ prompt: |
 ${PROMPT_INDENTED}
 ENDOFCONFIG
 
-bashio::log.info "Configuration generated at ${CONFIG_FILE}"
-bashio::log.info "Starting Xiaozhi ESP32 Server..."
+echo "[INFO] Configuration generated at ${CONFIG_FILE}"
+echo "[INFO] Starting Xiaozhi ESP32 Server..."
 
 cd "${SERVER_DIR}"
 exec python3 app.py
