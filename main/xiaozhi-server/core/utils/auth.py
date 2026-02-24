@@ -21,8 +21,9 @@ class AuthToken:
         from cryptography.hazmat.primitives import hashes
         from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
-        # 使用固定盐值（实际生产环境应使用随机盐）
-        salt = b"fixed_salt_placeholder"  # 生产环境应改为随机生成
+        import hashlib
+        # Derive a unique salt from the secret key itself (unique per deployment)
+        salt = hashlib.sha256(self.secret_key).digest()
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=length,

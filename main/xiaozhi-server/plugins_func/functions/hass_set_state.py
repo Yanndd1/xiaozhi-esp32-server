@@ -1,3 +1,4 @@
+import re
 from plugins_func.register import register_function, ToolType, ActionResponse, Action
 from plugins_func.functions.hass_init import initialize_hass_handler
 from config.logger import setup_logging
@@ -55,6 +56,8 @@ hass_set_state_function_desc = {
 
 @register_function("hass_set_state", hass_set_state_function_desc, ToolType.SYSTEM_CTL)
 def hass_set_state(conn: "ConnectionHandler", entity_id="", state=None):
+    if not re.match(r'^[a-z_]+\.[a-z0-9_]+$', entity_id):
+        return ActionResponse(Action.ERROR, "Invalid entity_id format", None)
     if state is None:
         state = {}
     try:

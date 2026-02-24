@@ -1,3 +1,4 @@
+import re
 from plugins_func.register import register_function, ToolType, ActionResponse, Action
 from plugins_func.functions.hass_init import initialize_hass_handler
 from config.logger import setup_logging
@@ -38,6 +39,8 @@ hass_play_music_function_desc = {
     "hass_play_music", hass_play_music_function_desc, ToolType.SYSTEM_CTL
 )
 def hass_play_music(conn: "ConnectionHandler", entity_id="", media_content_id="random"):
+    if not re.match(r'^[a-z_]+\.[a-z0-9_]+$', entity_id):
+        return ActionResponse(Action.ERROR, "Invalid entity_id format", None)
     try:
         # 执行音乐播放命令
         future = asyncio.run_coroutine_threadsafe(

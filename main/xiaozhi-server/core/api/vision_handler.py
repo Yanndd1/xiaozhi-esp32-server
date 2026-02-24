@@ -33,11 +33,6 @@ class VisionHandler(BaseHandler):
         auth_header = request.headers.get("Authorization", "")
         client_id = request.headers.get("Client-Id", "")
 
-        # 允许测试客户端跳过认证
-        if client_id == "web_test_client":
-            device_id = request.headers.get("Device-Id", "test_device")
-            return True, device_id
-
         if not auth_header.startswith("Bearer "):
             return False, None
 

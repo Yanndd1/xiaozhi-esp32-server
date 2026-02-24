@@ -3,13 +3,14 @@
 version: '3'
 services:
   xiaozhi-esp32-server:
-    image: ghcr.nju.edu.cn/xinnan-tech/xiaozhi-esp32-server:server_latest
+    build:
+      context: .
+      dockerfile: Dockerfile-custom
+    image: xiaozhi-esp32-server-custom
     container_name: xiaozhi-esp32-server
     restart: always
-    security_opt:
-      - seccomp:unconfined
     environment:
-      - TZ=Asia/Shanghai
+      - TZ=Europe/Paris
     ports:
       # ws服务端
       - "8000:8000"

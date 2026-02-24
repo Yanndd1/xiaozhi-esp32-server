@@ -1,0 +1,7 @@
+FROM ghcr.nju.edu.cn/xinnan-tech/xiaozhi-esp32-server:server_latest
+
+# Install Anthropic SDK for Claude LLM provider
+RUN pip install --no-cache-dir anthropic>=0.49.0
+
+# Copy Claude provider into the image
+COPY core/providers/llm/Claude/ /opt/xiaozhi-esp32-server/core/providers/llm/Claude/

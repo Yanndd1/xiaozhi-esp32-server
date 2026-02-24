@@ -1,3 +1,4 @@
+import re
 from plugins_func.register import register_function, ToolType, ActionResponse, Action
 from plugins_func.functions.hass_init import initialize_hass_handler
 from config.logger import setup_logging
@@ -32,6 +33,8 @@ hass_get_state_function_desc = {
 
 @register_function("hass_get_state", hass_get_state_function_desc, ToolType.SYSTEM_CTL)
 def hass_get_state(conn: "ConnectionHandler", entity_id=""):
+    if not re.match(r'^[a-z_]+\.[a-z0-9_]+$', entity_id):
+        return ActionResponse(Action.ERROR, "Invalid entity_id format", None)
     try:
         ha_response = handle_hass_get_state(conn, entity_id)
         return ActionResponse(Action.REQLLM, ha_response, None)
