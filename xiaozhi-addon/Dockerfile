@@ -31,17 +31,12 @@ RUN curl -L -o /tmp/repo.tar.gz \
     && rm -rf /tmp/repo.tar.gz /tmp/xiaozhi-esp32-server-main \
     && mkdir -p data tmp
 
-# ── Patch: make modelscope import optional (models are pre-downloaded) ──
-RUN python3 -c "\
-import pathlib; \
-p = pathlib.Path('core/providers/asr/sherpa_onnx_local.py'); \
-t = p.read_text(); \
-t = t.replace( \
-    'from modelscope.hub.file_download import model_file_download', \
-    'try:\\n    from modelscope.hub.file_download import model_file_download\\nexcept ImportError:\\n    model_file_download = None' \
-); \
-p.write_text(t); \
-print('Patched modelscope import in sherpa_onnx_local.py')"
+# ── Patches for HAOS compatibility ────────────────────────────────────
+# 1. Make modelscope import optional (models pre-downloaded)
+# 2. Add HTTP request logging middleware (diagnostics)
+# 3. Add OTA routes without trailing slash (ESP32 device compatibility)
+COPY patch_server.py /tmp/patch_server.py
+RUN python3 /tmp/patch_server.py && rm /tmp/patch_server.py
 
 # ── ASR model (SenseVoice multilingual, ~80 MB) ─────────────────────
 RUN mkdir -p models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17 \
