@@ -6,7 +6,7 @@ FROM ${BUILD_FROM}
 # Alpine (musl) is NOT supported — manylinux wheels are incompatible.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         python3 python3-pip python3-dev python3-venv \
-        libopus-dev libopus0 ffmpeg curl jq gcc g++ \
+        libopus-dev libopus0 ffmpeg curl jq gcc g++ bzip2 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt/xiaozhi-esp32-server
