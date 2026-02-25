@@ -54,7 +54,7 @@ PROMPT_INDENTED=$(echo "${PROMPT}" | sed 's/^/  /')
 bashio::log.info "Generating server configuration..."
 bashio::log.info "  LLM Model: ${MODEL_NAME}"
 bashio::log.info "  Language: ${LANGUAGE}"
-bashio::log.info "  TTS Voice: ${TTS_VOICE}"
+bashio::log.info "  TTS: Local Piper (fr_FR-siwis-medium)"
 bashio::log.info "  Local IP: ${LOCAL_IP}"
 
 mkdir -p "${SERVER_DIR}/data"
@@ -80,7 +80,7 @@ selected_module:
   VAD: SileroVAD
   ASR: SherpaASR
   LLM: ClaudeLLM
-  TTS: EdgeTTS
+  TTS: LocalTTS
   Memory: nomem
   Intent: function_call
 
@@ -93,9 +93,12 @@ LLM:
     temperature: 0.7
 
 TTS:
-  EdgeTTS:
-    type: edge
-    voice: "${TTS_VOICE}"
+  LocalTTS:
+    type: sherpa_tts
+    model_dir: models/vits-piper-fr_FR-siwis-medium
+    model_file: fr_FR-siwis-medium.onnx
+    speed: 1.0
+    speaker_id: 0
     output_dir: tmp/
 
 ASR:

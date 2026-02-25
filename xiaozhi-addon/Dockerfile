@@ -59,6 +59,13 @@ RUN mkdir -p models/sherpa-onnx-whisper-small \
     && curl -L -o models/sherpa-onnx-whisper-small/small-tokens.txt \
     "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-small/resolve/main/small-tokens.txt"
 
+# ── TTS model: Piper fr_FR-siwis-medium (~55 MB) ─────────────────────
+COPY sherpa_tts.py core/providers/tts/sherpa_tts.py
+RUN curl -L -o /tmp/tts-model.tar.bz2 \
+    "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-fr_FR-siwis-medium.tar.bz2" \
+    && tar xjf /tmp/tts-model.tar.bz2 -C models/ \
+    && rm /tmp/tts-model.tar.bz2
+
 # ── VAD model (SileroVAD, ~2 MB) ────────────────────────────────────
 RUN mkdir -p models/snakers4_silero-vad/src/silero_vad/data \
     && curl -L -o models/snakers4_silero-vad/src/silero_vad/data/silero_vad.onnx \
