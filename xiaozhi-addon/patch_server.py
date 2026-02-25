@@ -52,6 +52,7 @@ t = t.replace(
     '                    sample_rate=16000,\n'
     '                    feature_dim=80,\n'
     '                    decoding_method="greedy_search",\n'
+    '                    model_type="nemo_transducer",\n'
     '                )\n'
     '            elif self.model_type == "whisper":\n'
     '                logger.bind(tag=TAG).info(f"Loading Whisper model for language: {self.whisper_language}")\n'
