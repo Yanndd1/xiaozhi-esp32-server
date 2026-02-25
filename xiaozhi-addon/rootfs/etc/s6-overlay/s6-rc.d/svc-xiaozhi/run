@@ -26,18 +26,20 @@ if [ -z "${TTS_VOICE}" ]; then
     esac
 fi
 
-# Build HA devices YAML list from options
+# Build HA devices string from options (semicolon-separated: "location,name,entity_id;...")
 HA_DEVICES=""
 if bashio::config.has_value 'ha_devices'; then
     for device in $(bashio::config 'ha_devices | .[]'); do
-        HA_DEVICES="${HA_DEVICES}
-      - \"${device}\""
+        if [ -n "${HA_DEVICES}" ]; then
+            HA_DEVICES="${HA_DEVICES};${device}"
+        else
+            HA_DEVICES="${device}"
+        fi
     done
 fi
 
 if [ -z "${HA_DEVICES}" ]; then
-    HA_DEVICES="
-      - \"salon,example_device,light.example\""
+    HA_DEVICES="salon,example_device,light.example"
 fi
 
 # Get local IP
@@ -122,7 +124,7 @@ Intent:
 
 plugins:
   home_assistant:
-    devices:${HA_DEVICES}
+    devices: "${HA_DEVICES}"
     base_url: "http://supervisor/core"
     api_key: "${HA_TOKEN}"
 
