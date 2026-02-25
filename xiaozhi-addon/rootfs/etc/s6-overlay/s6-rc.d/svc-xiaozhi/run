@@ -99,10 +99,9 @@ TTS:
 ASR:
   SherpaASR:
     type: sherpa_onnx_local
-    model_dir: models/sherpa-onnx-whisper-small
+    model_dir: models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8
     output_dir: tmp/
-    model_type: whisper
-    language: ${LANGUAGE}
+    model_type: transducer
 
 VAD:
   SileroVAD:

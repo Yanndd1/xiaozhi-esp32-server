@@ -35,11 +35,22 @@ RUN curl -L -o /tmp/repo.tar.gz \
 # 1. Make modelscope import optional (models pre-downloaded)
 # 2. Add HTTP request logging middleware (diagnostics)
 # 3. Add OTA routes without trailing slash (ESP32 device compatibility)
-# 4. Add Whisper ASR support for French/multilingual
+# 4. Add Whisper + Parakeet V3 (NeMo Transducer) ASR support
 COPY patch_server.py /tmp/patch_server.py
 RUN python3 /tmp/patch_server.py && rm /tmp/patch_server.py
 
-# ── ASR model: Whisper small (multilingual incl. French, ~370 MB) ────
+# ── ASR model: Parakeet V3 (25 European langs incl. French, ~640 MB) ─
+RUN mkdir -p models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8 \
+    && curl -L -o models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/encoder.int8.onnx \
+    "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/resolve/main/encoder.int8.onnx" \
+    && curl -L -o models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/decoder.int8.onnx \
+    "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/resolve/main/decoder.int8.onnx" \
+    && curl -L -o models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/joiner.int8.onnx \
+    "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/resolve/main/joiner.int8.onnx" \
+    && curl -L -o models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/tokens.txt \
+    "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/resolve/main/tokens.txt"
+
+# ── ASR model: Whisper small (fallback, ~370 MB) ─────────────────────
 RUN mkdir -p models/sherpa-onnx-whisper-small \
     && curl -L -o models/sherpa-onnx-whisper-small/small-encoder.int8.onnx \
     "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-small/resolve/main/small-encoder.int8.onnx" \
@@ -47,13 +58,6 @@ RUN mkdir -p models/sherpa-onnx-whisper-small \
     "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-small/resolve/main/small-decoder.int8.onnx" \
     && curl -L -o models/sherpa-onnx-whisper-small/small-tokens.txt \
     "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-small/resolve/main/small-tokens.txt"
-
-# ── ASR model: SenseVoice (zh/en/ja/ko/yue fallback, ~80 MB) ────────
-RUN mkdir -p models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17 \
-    && curl -L -o models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/model.int8.onnx \
-    "https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/main/model.int8.onnx" \
-    && curl -L -o models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/tokens.txt \
-    "https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/main/tokens.txt"
 
 # ── VAD model (SileroVAD, ~2 MB) ────────────────────────────────────
 RUN mkdir -p models/snakers4_silero-vad/src/silero_vad/data \

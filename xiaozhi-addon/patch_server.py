@@ -15,9 +15,9 @@ t = t.replace(
     'except ImportError:\n    model_file_download = None'
 )
 
-# ── Patch 3: Add Whisper ASR support ─────────────────────────────────
+# ── Patch 3: Add Whisper + Parakeet/Transducer ASR support ───────────
 # sherpa_onnx_local.py only supports SenseVoice and Paraformer.
-# We add Whisper support (from_whisper) for French and other languages.
+# We add Whisper (from_whisper) and NeMo Transducer (from_transducer) support.
 
 # 3a. Store whisper_language from config for later use
 t = t.replace(
@@ -28,20 +28,32 @@ t = t.replace(
     '        model_files = {'
 )
 
-# 3b. Skip modelscope download for Whisper (files have different names, pre-downloaded)
+# 3b. Skip modelscope download for Whisper/Transducer (different file names, pre-downloaded)
 t = t.replace(
     '                    logger.bind(tag=TAG).info(f"正在下载模型文件: {file_name}")\n'
     '                    model_file_download(',
-    '                    if self.model_type == "whisper":\n'
-    '                        continue  # Whisper: different file structure, pre-downloaded\n'
+    '                    if self.model_type in ("whisper", "transducer"):\n'
+    '                        continue  # Different file structure, pre-downloaded\n'
     '                    logger.bind(tag=TAG).info(f"正在下载模型文件: {file_name}")\n'
     '                    model_file_download('
 )
 
-# 3c. Add Whisper model initialization case (before paraformer)
+# 3c. Add Whisper + Transducer model initialization cases (before paraformer)
 t = t.replace(
     '            if self.model_type == "paraformer":',
-    '            if self.model_type == "whisper":\n'
+    '            if self.model_type == "transducer":\n'
+    '                logger.bind(tag=TAG).info("Loading NeMo Transducer model (Parakeet V3)")\n'
+    '                self.model = sherpa_onnx.OfflineRecognizer.from_transducer(\n'
+    '                    encoder=os.path.join(self.model_dir, "encoder.int8.onnx"),\n'
+    '                    decoder=os.path.join(self.model_dir, "decoder.int8.onnx"),\n'
+    '                    joiner=os.path.join(self.model_dir, "joiner.int8.onnx"),\n'
+    '                    tokens=os.path.join(self.model_dir, "tokens.txt"),\n'
+    '                    num_threads=4,\n'
+    '                    sample_rate=16000,\n'
+    '                    feature_dim=80,\n'
+    '                    decoding_method="greedy_search",\n'
+    '                )\n'
+    '            elif self.model_type == "whisper":\n'
     '                logger.bind(tag=TAG).info(f"Loading Whisper model for language: {self.whisper_language}")\n'
     '                self.model = sherpa_onnx.OfflineRecognizer.from_whisper(\n'
     '                    encoder=os.path.join(self.model_dir, "small-encoder.int8.onnx"),\n'
@@ -55,12 +67,9 @@ t = t.replace(
 )
 
 p.write_text(t)
-print('[patch] sherpa_onnx_local.py: modelscope optional + Whisper ASR support added')
+print('[patch] sherpa_onnx_local.py: modelscope optional + Whisper + Transducer ASR support')
 
 # ── Patch 2: HTTP server - request logging + routes without trailing slash ──
-# ESP32 devices may send requests to /xiaozhi/ota (without trailing slash).
-# aiohttp returns 404 for unmatched paths, so we register both variants.
-# Also add logging middleware to see ALL incoming HTTP requests for diagnostics.
 p = pathlib.Path('core/http_server.py')
 t = p.read_text()
 
@@ -76,7 +85,7 @@ t = t.replace(
     '                app = web.Application(middlewares=[_log_all_requests])'
 )
 
-# 2b. Add OTA routes without trailing slash (before the vision routes block)
+# 2b. Add OTA routes without trailing slash
 t = t.replace(
     '                # \u6dfb\u52a0\u8def\u7531',
     '                    # Routes without trailing slash (ESP32 device compatibility)\n'
