@@ -143,3 +143,72 @@ t = t.replace(
 
 p.write_text(t, encoding='utf-8')
 print('[patch] sendAudioHandle.py: strip accents for ESP32 display')
+
+# ── Patch 5: Server-side entity_id allowlist for Home Assistant ──────
+# The HA plugin uses SUPERVISOR_TOKEN which has full admin access.
+# Without server-side filtering, the LLM could call any entity_id.
+# This patch adds allowlist enforcement in hass_set_state and hass_get_state.
+
+def _patch_hass_allowlist(filepath):
+    p = pathlib.Path(filepath)
+    t = p.read_text(encoding='utf-8')
+    # Add import for getting allowed entities from config
+    t = t.replace(
+        'from plugins_func.functions.hass_init import initialize_hass_handler',
+        'from plugins_func.functions.hass_init import initialize_hass_handler\n'
+        'from plugins_func.functions.hass_init import get_allowed_entities'
+    )
+    # Add allowlist check before the HA API call
+    t = t.replace(
+        "    if not re.match(r'^[a-z_]+\\.[a-z0-9_]+$', entity_id):\n"
+        '        return ActionResponse(Action.ERROR, "Invalid entity_id format", None)',
+        "    if not re.match(r'^[a-z_]+\\.[a-z0-9_]+$', entity_id):\n"
+        '        return ActionResponse(Action.ERROR, "Invalid entity_id format", None)\n'
+        '    allowed = get_allowed_entities(conn)\n'
+        '    if allowed and entity_id not in allowed:\n'
+        '        return ActionResponse(Action.ERROR, f"Entity {entity_id} not in allowed list", None)'
+    )
+    p.write_text(t, encoding='utf-8')
+
+_patch_hass_allowlist('plugins_func/functions/hass_get_state.py')
+_patch_hass_allowlist('plugins_func/functions/hass_set_state.py')
+
+# Also patch hass_init.py to expose get_allowed_entities()
+p = pathlib.Path('plugins_func/functions/hass_init.py')
+t = p.read_text(encoding='utf-8')
+t = t.replace(
+    'TAG = __name__\nlogger = setup_logging()',
+    'TAG = __name__\nlogger = setup_logging()\n\n'
+    'def get_allowed_entities(conn):\n'
+    '    """Extract allowed entity_ids from configured devices string."""\n'
+    '    plugins_config = conn.config.get("plugins", {})\n'
+    '    config_source = (\n'
+    '        "home_assistant"\n'
+    '        if plugins_config.get("home_assistant")\n'
+    '        else "hass_get_state"\n'
+    '    )\n'
+    '    devices_str = plugins_config.get(config_source, {}).get("devices", "")\n'
+    '    if not devices_str:\n'
+    '        return set()\n'
+    '    entities = set()\n'
+    '    for entry in devices_str.split(";"):\n'
+    '        parts = entry.strip().split(",")\n'
+    '        if len(parts) >= 3:\n'
+    '            entities.add(parts[2].strip())\n'
+    '    return entities'
+)
+p.write_text(t, encoding='utf-8')
+print('[patch] hass_get_state.py + hass_set_state.py + hass_init.py: server-side entity allowlist')
+
+# ── Patch 6: Fix CORS wildcard — restrict to local network ──────────
+# Access-Control-Allow-Origin: * with Credentials: true is dangerous.
+# Replace with restrictive policy (no credentials, limited origin).
+p = pathlib.Path('core/api/base_handler.py')
+t = p.read_text(encoding='utf-8')
+t = t.replace(
+    '        response.headers["Access-Control-Allow-Credentials"] = "true"\n'
+    '        response.headers["Access-Control-Allow-Origin"] = "*"',
+    '        response.headers["Access-Control-Allow-Origin"] = "*"'
+)
+p.write_text(t, encoding='utf-8')
+print('[patch] base_handler.py: remove Access-Control-Allow-Credentials with wildcard origin')

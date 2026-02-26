@@ -69,9 +69,10 @@ server:
   vision_explain: "http://${LOCAL_IP}:8003/mcp/vision/explain"
   timezone_offset: +1
   auth:
-    enabled: false
-    allowed_devices: []
-  auth_key: "haos-addon-secret-key-$(date +%s)"
+    enabled: true
+    allowed_devices:
+      - "3c:0f:02:de:a8:18"
+  auth_key: "$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
   mqtt_gateway: null
   mqtt_signature_key: null
   udp_gateway: null
