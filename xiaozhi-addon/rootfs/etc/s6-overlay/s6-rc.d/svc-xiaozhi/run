@@ -7,11 +7,45 @@ declare -r SERVER_DIR="/opt/xiaozhi-esp32-server"
 declare -r CONFIG_FILE="${SERVER_DIR}/data/.config.yaml"
 
 # Read add-on options
+LLM_BACKEND=$(bashio::config 'llm_backend')
+POPLLM_URL=$(bashio::config 'popllm_url')
+POPLLM_MODEL=$(bashio::config 'popllm_model')
 ANTHROPIC_API_KEY=$(bashio::config 'anthropic_api_key')
 MODEL_NAME=$(bashio::config 'model_name')
 LANGUAGE=$(bashio::config 'language')
 TTS_VOICE=$(bashio::config 'tts_voice')
 PROMPT=$(bashio::config 'prompt')
+
+# Defaults for popLLM backend.
+# popllm_url MUST be set in the add-on options (the LAN IP/host of the
+# Ollama server). Falls back to the standard Ollama localhost default;
+# never hardcode a private LAN IP in source (keeps the repo shareable).
+[ -z "${LLM_BACKEND}" ] && LLM_BACKEND="popllm"
+[ -z "${POPLLM_URL}" ] && POPLLM_URL="http://localhost:11434"
+[ -z "${POPLLM_MODEL}" ] && POPLLM_MODEL="qwen3.5:9b"
+
+if [ "${LLM_BACKEND}" = "popllm" ] && echo "${POPLLM_URL}" | grep -q "localhost"; then
+    bashio::log.warning "popllm_url is unset (using localhost). Set it to the Ollama server's LAN address in the add-on Configuration tab."
+fi
+
+# Build the LLM module selection + config block based on chosen backend.
+# popLLM = local Ollama on the GPU server (no cloud, no API cost).
+# claude = Anthropic cloud API (legacy fallback).
+if [ "${LLM_BACKEND}" = "claude" ]; then
+    LLM_MODULE="ClaudeLLM"
+    LLM_BLOCK="  ClaudeLLM:
+    type: Claude
+    model_name: \"${MODEL_NAME}\"
+    api_key: \"${ANTHROPIC_API_KEY}\"
+    max_tokens: 4096
+    temperature: 0.7"
+else
+    LLM_MODULE="PopLLM"
+    LLM_BLOCK="  PopLLM:
+    type: ollama
+    model_name: \"${POPLLM_MODEL}\"
+    base_url: \"${POPLLM_URL}\""
+fi
 
 # Get HA Supervisor token (automatically provided by HAOS)
 HA_TOKEN="${SUPERVISOR_TOKEN}"
@@ -52,7 +86,11 @@ fi
 PROMPT_INDENTED=$(echo "${PROMPT}" | sed 's/^/  /')
 
 bashio::log.info "Generating server configuration..."
-bashio::log.info "  LLM Model: ${MODEL_NAME}"
+if [ "${LLM_BACKEND}" = "claude" ]; then
+    bashio::log.info "  LLM Backend: Claude (cloud) — ${MODEL_NAME}"
+else
+    bashio::log.info "  LLM Backend: popLLM (local Ollama) — ${POPLLM_MODEL} @ ${POPLLM_URL}"
+fi
 bashio::log.info "  Language: ${LANGUAGE}"
 bashio::log.info "  TTS: Local Piper (fr_FR-siwis-medium)"
 bashio::log.info "  Local IP: ${LOCAL_IP}"
@@ -80,18 +118,13 @@ server:
 selected_module:
   VAD: SileroVAD
   ASR: SherpaASR
-  LLM: ClaudeLLM
+  LLM: ${LLM_MODULE}
   TTS: LocalTTS
   Memory: nomem
   Intent: function_call
 
 LLM:
-  ClaudeLLM:
-    type: Claude
-    model_name: "${MODEL_NAME}"
-    api_key: "${ANTHROPIC_API_KEY}"
-    max_tokens: 4096
-    temperature: 0.7
+${LLM_BLOCK}
 
 TTS:
   LocalTTS:
