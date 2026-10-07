@@ -1,0 +1,33 @@
+# =============================================================================
+# Déploiement Xiaozhi ESP32 Server sur PopLLM (192.168.10.84, Ubuntu 24.04)
+# Build context = ce dossier (xiaozhi-addon) — réutilise requirements-addon.txt,
+# patch_server.py, sherpa_tts.py, popllm-entrypoint.sh.
+#
+#   cp .env.popllm.example .env   # puis renseigner HA_TOKEN
+#   docker compose -f docker-compose.popllm.yml up -d --build
+# =============================================================================
+services:
+  xiaozhi-popllm:
+    build:
+      context: .
+      dockerfile: Dockerfile.popllm
+    image: xiaozhi-popllm:latest
+    container_name: xiaozhi-popllm
+    restart: unless-stopped
+    # network_mode host : le conteneur atteint Ollama sur 127.0.0.1:11434
+    # (Ollama tourne en natif sur PopLLM) et publie 8000/8003 directement
+    # sur 192.168.10.84. NB : la clé `ports:` est ignorée en mode host.
+    network_mode: host
+    env_file:
+      - .env
+    environment:
+      - TZ=Europe/Paris
+    volumes:
+      - ./data-popllm:/opt/xiaozhi-esp32-server/data
+      - ./tmp-popllm:/opt/xiaozhi-esp32-server/tmp
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8003/xiaozhi/ota/"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s

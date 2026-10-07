@@ -153,6 +153,10 @@ main/manager-web/node_modules
 .private_config.yaml
 .env.development
 
+# xiaozhi-addon: real env files contain secrets (HA_TOKEN etc.); keep .example tracked
+xiaozhi-addon/.env*
+!xiaozhi-addon/.env.popllm.example
+
 # model files
 main/xiaozhi-server/models/SenseVoiceSmall/model.pt
 main/xiaozhi-server/models/sherpa-onnx*
@@ -184,3 +188,9 @@ uploadfile
 !main/manager-mobile/**/.env*
 !main/manager-mobile/**/*.json
 !main/xiaozhi-server/**/*.json
+
+# Local Docker buildx state, not project files
+main/xiaozhi-server/.docker/
+
+# Personal ideation document (habits, places, health): never publish
+xiaozhi-addon/backup-2026-09-01/use-cases-*.html

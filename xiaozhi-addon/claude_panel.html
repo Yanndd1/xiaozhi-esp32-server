@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Claude Code</title>
+<style>
+:root{--bg:#f6f7fb;--card:#fff;--line:#e3e6f0;--tx:#1a1f33;--soft:#4d5675;
+ --mute:#7a82a0;--ok:#1e8c75;--ko:#c0392b;--wait:#a86518}
+@media (prefers-color-scheme:dark){
+ :root{--bg:#0a0e1a;--card:#161d33;--line:#232c47;--tx:#e6e9f2;--soft:#a4adc6;
+  --mute:#6f779a;--ok:#7ce0c9;--ko:#e87a7a;--wait:#f0a868}}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+ background:var(--bg);color:var(--tx);display:flex;align-items:center;
+ justify-content:center;padding:16px;line-height:1.5}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;
+ padding:22px;width:100%;max-width:520px;box-shadow:0 8px 32px rgba(0,0,0,.12)}
+.state{display:flex;align-items:center;gap:10px;font-size:12px;
+ text-transform:uppercase;letter-spacing:.1em;color:var(--mute);font-weight:600}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--mute);flex:none}
+.dot.wait{background:var(--wait);animation:pulse 1.6s infinite}
+.dot.ok{background:var(--ok)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+h1{font-size:19px;margin:14px 0 6px;letter-spacing:-.01em}
+#texte{color:var(--soft);font-size:15px;margin:0 0 20px;min-height:44px;
+ overflow-wrap:anywhere}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+button{appearance:none;font-family:inherit;font-size:17px;font-weight:650;
+ padding:20px 12px;border-radius:14px;cursor:pointer;border:2px solid transparent;
+ transition:transform .1s ease,opacity .15s ease;color:#fff}
+button:active{transform:scale(.97)}
+button:disabled{opacity:.35;cursor:default}
+#ok{background:var(--ok)}
+#ko{background:var(--ko)}
+@media (prefers-color-scheme:dark){#ok,#ko{color:#0a0e1a}}
+#flash{margin-top:14px;font-size:14px;color:var(--soft);min-height:20px;text-align:center}
+footer{margin-top:18px;font-size:11.5px;color:var(--mute);text-align:center}
+</style>
+</head>
+<body>
+<main class="card">
+  <div class="state"><span class="dot" id="dot"></span><span id="etat">Connexion</span></div>
+  <h1 id="titre">Rien en attente</h1>
+  <p id="texte">Cette page s'actualise toute seule. Elle s'allume quand Claude Code demande une autorisation.</p>
+  <div class="actions">
+    <button id="ok" disabled>Valider</button>
+    <button id="ko" disabled>Refuser</button>
+  </div>
+  <div id="flash"></div>
+  <footer>Xiaozhi &middot; validation des demandes Claude Code</footer>
+</main>
+<script>
+(function () {
+  var base = location.origin + '/api/claude';
+  var dot = document.getElementById('dot'), etat = document.getElementById('etat');
+  var titre = document.getElementById('titre'), texte = document.getElementById('texte');
+  var ok = document.getElementById('ok'), ko = document.getElementById('ko');
+  var flash = document.getElementById('flash');
+  var courant = null, occupe = false;
+
+  function rendre(d) {
+    if (d && d.pending) {
+      courant = d.decision_id;
+      dot.className = 'dot wait'; etat.textContent = 'En attente';
+      titre.textContent = 'Claude demande une autorisation';
+      texte.textContent = d.text || '(sans détail)';
+      ok.disabled = false; ko.disabled = false;
+    } else {
+      courant = null;
+      dot.className = 'dot'; etat.textContent = 'Au repos';
+      titre.textContent = 'Rien en attente';
+      texte.textContent = "Cette page s'actualise toute seule. Elle s'allume quand Claude Code demande une autorisation.";
+      ok.disabled = true; ko.disabled = true;
+    }
+  }
+
+  function sonder() {
+    if (occupe) return;
+    fetch(base + '/pending', { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(rendre)
+      .catch(function () {
+        dot.className = 'dot'; etat.textContent = 'Serveur injoignable';
+      });
+  }
+
+  function repondre(valeur) {
+    if (!courant) return;
+    occupe = true; ok.disabled = true; ko.disabled = true;
+    flash.textContent = 'Envoi…';
+    fetch(base + '/decision/latest/resolve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ decision: valeur })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.status === 'ok') {
+          dot.className = 'dot ok';
+          flash.textContent = d.decision === 'allow' ? "C'est validé." : "C'est refusé.";
+        } else {
+          flash.textContent = d.reason || 'Échec';
+        }
+      })
+      .catch(function () { flash.textContent = 'Serveur injoignable'; })
+      .finally(function () {
+        occupe = false;
+        setTimeout(function () { flash.textContent = ''; sonder(); }, 2500);
+      });
+  }
+
+  ok.addEventListener('click', function () { repondre('allow'); });
+  ko.addEventListener('click', function () { repondre('deny'); });
+  sonder();
+  setInterval(sonder, 2000);
+})();
+</script>
+</body>
+</html>

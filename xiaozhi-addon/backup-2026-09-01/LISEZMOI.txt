@@ -1,0 +1,23 @@
+Sauvegardes du 2026-09-01, avant les correctifs latence / verbosite / prononciation.
+
+Ces fichiers ne sont pas suivis par git (sauf patch_server.py), d'ou cette copie.
+
+  popllm-entrypoint.sh      etat d'origine (2026-06-08)
+  Dockerfile.popllm         etat d'origine (2026-06-08)
+  .env.popllm.example       etat d'origine (2026-05-19)
+  use-cases-2026-05-16.html ancien document d'ideation, remplace
+
+  patch_no_chinese.py       ATTENTION : cette copie a ete prise APRES la
+                            correction des accents. Pour revenir a l'original,
+                            remplacer les 2 occurrences de
+                              "Désolé, je me suis trompé de langue."
+                            par
+                              "Desole, je dois repondre en francais."
+                            et retirer le paragraphe de docstring ajoute.
+
+patch_server.py est suivi par git : rollback via
+  git checkout -- xiaozhi-addon/patch_server.py
+
+Rollback complet du deploiement (sur PopLLM) :
+  docker tag xiaozhi-popllm:before-deploy xiaozhi-popllm:latest
+  docker compose -f docker-compose.popllm.yml up -d
