@@ -1,0 +1,213 @@
+# =============================================================================
+# Xiaozhi ESP32 Server : image STANDALONE pour PopLLM (Docker hors HAOS)
+# =============================================================================
+# Parité avec l'add-on HAOS (Dockerfile) : même fork, mêmes patches, mêmes
+# modèles. Différences : base Debian (pas l'image HAOS/bashio), pas de S6,
+# config générée par popllm-entrypoint.sh depuis des variables d'environnement
+# (aucun secret en dur). LLM = Ollama local sur PopLLM (pas de cloud).
+# =============================================================================
+FROM debian:bookworm-slim
+
+# ── System dependencies ──────────────────────────────────────────────
+# ca-certificates : indispensable hors image HAOS pour curl https + requests TLS
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3 python3-pip python3-dev python3-venv \
+        libopus-dev libopus0 ffmpeg curl jq gcc g++ bzip2 \
+        bash ca-certificates tzdata \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /opt/xiaozhi-esp32-server
+
+# ── Native packages: onnxruntime (CPU) + sherpa_onnx ─────────────────
+# CPU suffit largement sur le Ryzen 9 3900X de PopLLM. Accélération GPU
+# = optimisation future (onnxruntime-gpu + CUDA), cf. README-popllm.md.
+RUN pip3 install --no-cache-dir --break-system-packages \
+        onnxruntime sherpa-onnx
+RUN python3 -c "import onnxruntime; print(f'onnxruntime {onnxruntime.__version__} OK')"
+RUN python3 -c "import sherpa_onnx; print('sherpa_onnx OK')"
+
+# ── Python dependencies ──────────────────────────────────────────────
+COPY requirements-addon.txt /tmp/requirements-addon.txt
+RUN pip3 install --no-cache-dir --break-system-packages \
+    -r /tmp/requirements-addon.txt \
+    && rm /tmp/requirements-addon.txt
+
+# ── Server code (fork utilisateur, branche main) ─────────────────────
+RUN curl -L -o /tmp/repo.tar.gz \
+    https://github.com/Yanndd1/xiaozhi-esp32-server/archive/refs/heads/main.tar.gz \
+    && tar xzf /tmp/repo.tar.gz -C /tmp \
+    && cp -r /tmp/xiaozhi-esp32-server-main/main/xiaozhi-server/* . \
+    && rm -rf /tmp/repo.tar.gz /tmp/xiaozhi-esp32-server-main \
+    && mkdir -p data tmp
+
+# ── Patches (modelscope optionnel, logging, OTA sans slash, Parakeet) ─
+COPY patch_server.py /tmp/patch_server.py
+RUN python3 /tmp/patch_server.py && rm /tmp/patch_server.py
+
+# ── Normalisation du niveau audio avant transcription ────────────────
+# Mesure du 2026-09-01 sur un enregistrement reel : parole a -35,9 dBFS,
+# crete a -22, zero saturation. Le micro delivre environ 15 dB sous le
+# niveau utile et n'a pas d'AGC. On remonte cote serveur.
+COPY patch_asr_gain.py /tmp/patch_asr_gain.py
+RUN python3 /tmp/patch_asr_gain.py && rm /tmp/patch_asr_gain.py
+
+# ── Patch additif Claude Code (routes notify + decision) ─────────────
+COPY patch_claude_notify.py /tmp/patch_claude_notify.py
+RUN python3 /tmp/patch_claude_notify.py && rm /tmp/patch_claude_notify.py
+
+# ── Validation d'une demande Claude sans passer par la voix ───────────
+# Le circuit de validation existait, mais on ne pouvait y repondre que par
+# le plugin LLM claude_decide, qui exige Intent=function_call. En mode
+# LLM_BACKEND=ha (Intent=nointent), plus aucune reponse n'etait possible.
+# Ce patch ajoute /resolve : n'importe quel bouton peut valider.
+COPY patch_claude_resolve.py /tmp/patch_claude_resolve.py
+RUN python3 /tmp/patch_claude_resolve.py && rm /tmp/patch_claude_resolve.py
+
+# Page de validation autonome servie par /api/claude/panel
+RUN mkdir -p static
+COPY claude_panel.html static/claude_panel.html
+
+# ── Miroir des annonces vocales Home Assistant ────────────────────────
+# S'abonne au flux d'evenements de HA et recopie les annonces sur le
+# boitier. Evite d'avoir a declarer un rest_command dans configuration.yaml,
+# fichier auquel nous n'avons pas acces. Inactif tant que
+# HA_MIRROR_ANNOUNCE != on.
+COPY ha_announce_mirror.py core/ha_announce_mirror.py
+COPY patch_ha_mirror.py /tmp/patch_ha_mirror.py
+RUN python3 /tmp/patch_ha_mirror.py && rm /tmp/patch_ha_mirror.py
+
+# ── Plugin LLM validation vocale Claude Code (approuve/refuse) ────────
+COPY claude_decide.py plugins_func/functions/claude_decide.py
+
+# ── Patch additif : filtre anti-chinois sur la sortie TTS ─────────────
+COPY patch_no_chinese.py /tmp/patch_no_chinese.py
+RUN python3 /tmp/patch_no_chinese.py && rm /tmp/patch_no_chinese.py
+
+# ── Patch additif : latence + verbosite du provider Ollama ────────────
+# Mesure du 2026-09-01 : sans ce patch, une phrase de conversation prenait
+# 16 a 31 s et revenait VIDE (le modele consommait tout son budget en
+# raisonnement interne, invisible sur l'endpoint /v1). Avec : 0,4 a 1,0 s.
+# Le raisonnement reste actif sur le chemin outils, ou il conditionne la
+# fiabilite de l'appel de fonction (6/6 avec, 2/6 sans).
+COPY patch_ollama_nothink.py /tmp/patch_ollama_nothink.py
+RUN python3 /tmp/patch_ollama_nothink.py && rm /tmp/patch_ollama_nothink.py
+
+# ── Patch additif : Home Assistant en HTTPS + timeouts ────────────────
+# HA a bascule en TLS le 6 aout 2026 (certificat auto-signe). Il ne repond
+# plus du tout en http clair, donc le conteneur en etait coupe depuis
+# environ quatre semaines. Ajoute aussi un timeout au provider LLM
+# homeassistant, qui appelait requests.post sans aucune borne.
+COPY patch_ha_tls.py /tmp/patch_ha_tls.py
+RUN python3 /tmp/patch_ha_tls.py && rm /tmp/patch_ha_tls.py
+
+# ── ASR : Parakeet V3 (25 langues EU dont FR, ~640 Mo) ───────────────
+RUN mkdir -p models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8 \
+    && curl -L -o models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/encoder.int8.onnx \
+    "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/resolve/main/encoder.int8.onnx" \
+    && curl -L -o models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/decoder.int8.onnx \
+    "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/resolve/main/decoder.int8.onnx" \
+    && curl -L -o models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/joiner.int8.onnx \
+    "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/resolve/main/joiner.int8.onnx" \
+    && curl -L -o models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/tokens.txt \
+    "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/resolve/main/tokens.txt"
+
+# ── ASR option : Parakeet V3 pleine precision (fp32) ─────────────────
+# DESACTIVE PAR DEFAUT. A/B test de la qualite de transcription francaise.
+#   docker compose build --build-arg ASR_FP32=1
+# Poids reels verifies le 2026-09-01 sur HuggingFace :
+#   encoder.onnx 41 Mo + encoder.weights 2323 Mo (format ONNX a donnees
+#   externes : les DEUX fichiers sont necessaires, cote a cote)
+#   decoder.onnx 47 Mo + joiner.onnx 25 Mo
+# Contreparties : +2,4 Go d'image et inference CPU nettement plus lente.
+# Gain attendu sur le WER francais : faible (Parakeet int8 est deja bon).
+# Le vrai levier qualite reste le micro de l'ESP32, pas la precision du
+# modele. A ne tenter qu'apres avoir traite le traitement du signal.
+# Quand le dossier existe, popllm-entrypoint.sh le prefere automatiquement.
+ARG ASR_FP32=0
+RUN if [ "${ASR_FP32}" = "1" ]; then \
+        mkdir -p models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3 \
+        && for F in encoder.onnx encoder.weights decoder.onnx joiner.onnx tokens.txt; do \
+             curl -fL -o "models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3/$F" \
+             "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3/resolve/main/$F" \
+             || exit 1; \
+           done \
+        && echo "[ASR] Parakeet V3 fp32 installe"; \
+    else \
+        echo "[ASR] Parakeet V3 int8 uniquement (ASR_FP32=0)"; \
+    fi
+
+# ── ASR : Whisper medium, langue forcee (~900 Mo) ────────────────────
+# Modele par defaut depuis le 2026-09-01. Parakeet detecte la langue tout
+# seul et derive vers l'anglais sur les phrases courtes ; Whisper accepte
+# une langue forcee. `small` transcrivait trop mal en francais
+# (« Bonne-moi le billion d'energie » pour « donne-moi le bilan d'energie »),
+# d'ou le passage a `medium`, environ 2,5 fois plus gros.
+RUN mkdir -p models/sherpa-onnx-whisper-medium \
+    && for F in medium-encoder.int8.onnx medium-decoder.int8.onnx medium-tokens.txt; do \
+         curl -fL -o "models/sherpa-onnx-whisper-medium/$F" \
+         "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-medium/resolve/main/$F" \
+         || exit 1; \
+       done \
+    && echo "[ASR] Whisper medium installe"
+
+# ── ASR repli : Whisper small (~370 Mo) ──────────────────────────────
+RUN mkdir -p models/sherpa-onnx-whisper-small \
+    && curl -L -o models/sherpa-onnx-whisper-small/small-encoder.int8.onnx \
+    "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-small/resolve/main/small-encoder.int8.onnx" \
+    && curl -L -o models/sherpa-onnx-whisper-small/small-decoder.int8.onnx \
+    "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-small/resolve/main/small-decoder.int8.onnx" \
+    && curl -L -o models/sherpa-onnx-whisper-small/small-tokens.txt \
+    "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-small/resolve/main/small-tokens.txt"
+
+# ── TTS : Piper fr_FR-siwis-medium (~55 Mo, local) ───────────────────
+COPY sherpa_tts.py core/providers/tts/sherpa_tts.py
+RUN curl -L -o /tmp/tts-model.tar.bz2 \
+    "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-fr_FR-siwis-medium.tar.bz2" \
+    && tar xjf /tmp/tts-model.tar.bz2 -C models/ \
+    && rm /tmp/tts-model.tar.bz2
+
+# ── VAD : SileroVAD (~2 Mo) ──────────────────────────────────────────
+RUN mkdir -p models/snakers4_silero-vad/src/silero_vad/data \
+    && curl -L -o models/snakers4_silero-vad/src/silero_vad/data/silero_vad.onnx \
+    "https://github.com/snakers4/silero-vad/raw/master/src/silero_vad/data/silero_vad.onnx"
+
+# ── Boitier connecte en permanence (firmware modifie le 2026-10-06) ──
+# Le firmware garde sa connexion ouverte au repos et envoie un ping toutes
+# les 30 s. Ce patch retire les connexions fermees du registre (la route
+# /notify repondait "ok" sur une connexion morte) et fait choisir aux
+# annonces la connexion vivante la plus recente. Place apres les modeles
+# pour ne pas invalider le cache de ces couches lourdes.
+COPY patch_persistent_conn.py /tmp/patch_persistent_conn.py
+RUN python3 /tmp/patch_persistent_conn.py && rm /tmp/patch_persistent_conn.py
+
+# ── Annonces reservees au boitier (evenement HA xiaozhi_announce) ─────
+# Une automation HA declenche l'evenement avec un message : seul le boitier
+# parle, pas le satellite du salon. Ajoute le 2026-10-07 (detections Frigate).
+COPY patch_mirror_event.py /tmp/patch_mirror_event.py
+RUN python3 /tmp/patch_mirror_event.py && rm /tmp/patch_mirror_event.py
+
+# Prompt enrichi en francais (remplace le modele chinois d'amont, voir
+# prompt_template dans popllm-entrypoint.sh)
+COPY agent-base-prompt-fr.txt agent-base-prompt-fr.txt
+
+# ── Reponse apres un appel d'outil + outils HA en francais ────────────
+# Mesure du 2026-10-07 : apres un resultat d'outil, qwen-ha (raisonnement
+# actif) rangeait sa reponse dans le canal de reflexion, le boitier restait
+# muet sur toute commande domotique. Traduit aussi les textes des outils HA.
+COPY patch_tools_fr.py /tmp/patch_tools_fr.py
+RUN python3 /tmp/patch_tools_fr.py && rm /tmp/patch_tools_fr.py
+
+# ── Entrypoint standalone (génère data/.config.yaml depuis l'env) ─────
+COPY popllm-entrypoint.sh /usr/local/bin/popllm-entrypoint.sh
+# Normalisation CRLF -> LF. Le depot est edite depuis Windows : un fichier
+# enregistre en fins de ligne Windows casse le shebang cote Linux, et le
+# conteneur boucle sur `/usr/bin/env: 'bash\r': No such file or directory`
+# (vecu le 2026-09-01). Ce sed rend l'image immunisee a ce cas.
+RUN sed -i 's/\r$//' /usr/local/bin/popllm-entrypoint.sh \
+    && chmod +x /usr/local/bin/popllm-entrypoint.sh \
+    && head -1 /usr/local/bin/popllm-entrypoint.sh | grep -q 'bash$' \
+    && echo "[entrypoint] fins de ligne OK"
+
+ENV TZ=Europe/Paris
+EXPOSE 8000 8003
+ENTRYPOINT ["/usr/local/bin/popllm-entrypoint.sh"]
